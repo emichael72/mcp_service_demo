@@ -1,0 +1,37 @@
+{
+	"project_name": "Demo Project",
+	"description": "A standalone MCP service demo with three dummy shell tools.",
+	"version": "1.0.0",
+	"commands": {
+		"tool_a": {
+			"hidden": false,
+			"cmd_type": "AUTOMATION",
+			"description": "Prints a greeting for the given name.",
+			"path": "tools/tool_a.sh",
+			"args": [
+				"<name>"
+			],
+			"resource": "resources/tools_a.md"
+		},
+		"tool_b": {
+			"hidden": false,
+			"cmd_type": "AUTOMATION",
+			"description": "Generates a random number up to a specified maximum (default 100).",
+			"path": "tools/tool_b.sh",
+			"args": [
+				"[max]"
+			],
+			"resource": "resources/tools_b.md"
+		},
+		"tool_c": {
+			"hidden": false,
+			"cmd_type": "AUTOMATION",
+			"description": "Counts the number of lines in a given file.",
+			"path": "tools/tool_c.sh",
+			"args": [
+				"<file>"
+			],
+			"resource": "resources/tools_c.md"
+		}
+	}
+}
