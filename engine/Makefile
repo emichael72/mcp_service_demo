@@ -17,10 +17,11 @@
 #    - If .venv already exists, install will fail (use uninstall first)
 # ================================================================
 
-PYTHON   := python3
-VENV_DIR := .venv
-REQ_PKGS := aiohttp colorama json5
-ENGINE   := mcp.py
+PYTHON   		:= python3
+VENV_DIR 		:= .venv
+REQ_PKGS 		:= aiohttp colorama json5
+ENGINE   		:= mcp.py
+JSON_PROJECT    := ../project/mcp_demo.jsonc
 
 .PHONY: all install uninstall check-python run
 
@@ -74,4 +75,4 @@ run:
 	  echo "Please run: make install"; \
 	  exit 1; \
 	fi
-	@$(VENV_DIR)/bin/python $(ENGINE) --project ../project/mcp_demo.json
+	@$(VENV_DIR)/bin/python $(ENGINE) --project $(JSON_PROJECT)
