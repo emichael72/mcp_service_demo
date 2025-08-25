@@ -13,7 +13,8 @@ mcp_service/
 │   ├── mcp_service.py      # Core MCP service (JSON-RPC over SSE/HTTP)
 │   ├── logger.py           # Simple console logger
 │   ├── local_types.py      # Local type definitions
-│   └── platform_tools.py   # Platform helpers
+│   ├── platform_tools.py   # Platform helpers
+│   └── run_inspector.cmd   # Windows helper script to launch the MCP Inspector
 └── project/                # Demo project definition
     ├── mcp_demo.json       # Project metadata + tool definitions
     ├── tools/              # Example tool scripts
@@ -64,56 +65,13 @@ Start the service with the demo project:
 make run
 ```
 
-The service starts an SSE/JSON-RPC endpoint (by default on port `6274`).
+The service starts an SSE/JSON-RPC endpoint using the port specified in `mcp_demo.json`.
 
-## Using Curl to Call Tools
+## Trying Out the MCP service
 
-### 1. List tools
-
-```bash
-curl -s -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" \
-  http://localhost:6274/message | jq
-```
-
-### 2. Call `tool_a` (greet user)
-
-```bash
-curl -s -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\
-\"params\":{\"name\":\"tool_a\",\"arguments\":{\"args\":[\"Alice\"]}}}" \
-  http://localhost:6274/message | jq
-```
-
-Expected output:
-
-```json
-{
-	"status": 0,
-	"logs": [
-		"Hello, Alice! Welcome to the MCP demo project."
-	],
-	"summary": "Executed: .../tool_a.sh Alice (exit 0)"
-}
-```
-
-### 3. Call `tool_b` (random number, always 1)
-
-```bash
-curl -s -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\
-\"params\":{\"name\":\"tool_b\",\"arguments\":{}}}" \
-  http://localhost:6274/message | jq
-```
-
-### 4. Call `tool_c` (count lines in a file)
-
-```bash
-curl -s -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\
-\"params\":{\"name\":\"tool_c\",\"arguments\":{\"args\":[\"resources/tool_a.md\"]}}}" \
-  http://localhost:6274/message | jq
-```
+Follow the on-screen examples to copy & paste `curl` requests against your MCP service.  
+For a friendlier experience, consider using [MCP Inspector](https://github.com/modelcontextprotocol/inspector) a
+complementary tool for exploring and testing MCP services with an interactive UI.
 
 ## Notes
 
