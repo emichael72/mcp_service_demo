@@ -30,7 +30,6 @@
 			"resource": "resources/tool_c.md"
 		}
 	},
-
 	"templates": {
 		"greet_user": {
 			"description": "Template to greet a specific user using tool_a",
@@ -40,10 +39,10 @@
 			}
 		},
 		"random_number": {
-			"description": "Template to generate a random number up to 500 using tool_b",
+			"description": "Template to generate a random number up to 100 using tool_b",
 			"command": "tool_b",
 			"args": {
-				"[max]": "500"
+				"[max]": "100"
 			}
 		}
 	}
