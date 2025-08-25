@@ -162,9 +162,9 @@ class CoreMCPService:
         self._register_all_commands()
 
         # Manual endpoints
-        self._app.router.add_get("/status", self._status_handler)
         self._app.router.add_get("/sse", self._sse_handler)
         self._app.router.add_post("/message", self._rpc_handler)
+        self._app.router.add_get("/status", self._status_handler)
         self._app.router.add_get("/help", self._help_handler)
 
         # HTTP (streamable) at base URL:
