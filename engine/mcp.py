@@ -93,12 +93,8 @@ def main() -> int:
                 # Switch to the directory containing the project file
                 os.chdir(json_path.parent)
                 project_data = load_project(json_path)
-                mcp_service = CoreMCPService(
-                    project_data=project_data,
-                    tools_prefix="",
-                    patch_vscode_config=True,
-                    show_usage_examples=True, )
-
+                # Instantiate and start the service
+                mcp_service = CoreMCPService(project_data=project_data)
                 mcp_service.start()
                 result = 0
 

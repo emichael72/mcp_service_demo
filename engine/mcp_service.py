@@ -111,21 +111,12 @@ class _CoreMCPToolType:
 
 
 class CoreMCPService:
-    def __init__(self, project_data: Optional[dict] = None,
-                 tools_prefix: str = "",
-                 patch_vscode_config: bool = False, show_usage_examples: bool = True) -> None:
+    def __init__(self, project_data: Optional[dict] = None) -> None:
 
         """
         Initialize MCP server state and register routes.
-        - Loads configuration (host/port).
-        - Prepares the aiohttp app and registers command/tool routes.
-        - Adds health and tool-list endpoints.
-        - Registers the module with telemetry/registry.
         Args:
             project_data (Any): Project data (json parsed data).
-            tools_prefix (str): Prefix added to all published tools.
-            patch_vscode_config (bool): Maintain VSCode 'mcp.json' file automatically.
-            show_usage_examples (bool): Show several 'curl' examples.
         """
 
         self._single_flight = asyncio.Semaphore(1)  # Single-flight across the whole workspace
@@ -138,9 +129,9 @@ class CoreMCPService:
         self._mcp_server_name: Optional[str] = None
         self._mcp_server_version: Optional[str] = None
         self._project_data: Optional[dict] = project_data
-        self._patch_vscode_config: bool = patch_vscode_config
-        self._tool_prefix: str = tools_prefix
-        self._show_usage_examples: bool = show_usage_examples
+        self._patch_vscode_config: bool = False
+        self._tool_prefix: Optional[str] = None
+        self._show_usage_examples: bool = False
         self._mcp_server_bind_address: Optional[str] = None
         self._mcp_server_port: Optional[int] = 0
         self._shutting_down: bool = False
@@ -150,6 +141,11 @@ class CoreMCPService:
 
         if not isinstance(project_data, dict):
             raise TypeError("project_data must be a dict")
+
+        # Override defaults using configuration optional parameters
+        self._show_usage_examples = self._project_data.get("show_usage_examples", self._show_usage_examples)
+        self._patch_vscode_config = self._project_data.get("patch_vscode_config", self._patch_vscode_config)
+        self._tool_prefix = self._project_data.get("tool_prefix", "")
 
         self._mcp_server_name = self._project_data.get("project_name", "MCP service")
         self._mcp_server_version = self._project_data.get("version", "1.0.0")
@@ -1000,42 +996,35 @@ class CoreMCPService:
         print(f"{Fore.YELLOW}- Name:{Style.RESET_ALL}                  {Fore.GREEN}{server_name}{Style.RESET_ALL}")
         if isinstance(host_bind_address, str):
             print(
-                f"{Fore.YELLOW}- Bind address:{Style.RESET_ALL}          {Fore.GREEN}{host_bind_address}{Style.RESET_ALL}")
+                f"{Fore.YELLOW}- Bind address:{Style.RESET_ALL}          {Fore.GREEN}{host_bind_address}{Style.RESET_ALL}"
+            )
 
         if show_examples:
+            curl = f"{Fore.CYAN}curl{Style.RESET_ALL}"
+            host_colored = f"{Fore.GREEN}{host}{Style.RESET_ALL}"
+            port_colored = f"{Fore.MAGENTA}{port}{Style.RESET_ALL}"
+
             print(f"\n{Fore.CYAN}Example commands you can run in another shell:{Style.RESET_ALL}")
 
             print(f"\n{Fore.YELLOW}1. Listen for SSE broadcasts:{Style.RESET_ALL}")
-            print(f"   {Fore.WHITE}curl -s -N --noproxy {host} {base}/sse{Style.RESET_ALL}")
+            print(f"   {curl} -s -N --noproxy {host_colored} http://{host_colored}:{port_colored}/sse{Style.RESET_ALL}")
 
             print(f"\n{Fore.YELLOW}2. List available tools:{Style.RESET_ALL}")
-            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
+            print(f"   {curl} -s --noproxy {host_colored} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"tools/list\\\",\\\"params\\\":{}}\" "
-                  f"{base}/message | jq{Style.RESET_ALL}")
+                  f"http://{host_colored}:{port_colored}/message | jq{Style.RESET_ALL}")
 
-            print(f"\n{Fore.YELLOW}3. Execute tool 'tool_a' with argument 'Alice':{Style.RESET_ALL}")
-            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
+            print(f"\n{Fore.YELLOW}3. Execute tool 'greet_user' with argument 'Alice':{Style.RESET_ALL}")
+            print(f"   {curl} -s --noproxy {host_colored} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":2,\\\"method\\\":\\\"tools/call\\\","
-                  "\\\"params\\\":{\\\"name\\\":\\\"tool_a\\\",\\\"arguments\\\":{\\\"args\\\":[\\\"Alice\\\"]}}}\" "
-                  f"{base}/message | jq{Style.RESET_ALL}")
+                  "\\\"params\\\":{\\\"name\\\":\\\"greet_user\\\","
+                  "\\\"arguments\\\":{\\\"name\\\":\\\"Alice\\\"}}}\" "
+                  f"http://{host_colored}:{port_colored}/message | jq{Style.RESET_ALL}")
 
-            print(f"\n{Fore.YELLOW}4. Get help (all commands):{Style.RESET_ALL}")
-            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
-                  "-H \"Content-Type: application/json\" "
-                  "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":3,\\\"method\\\":\\\"help\\\","
-                  "\\\"params\\\":{}}\" "
-                  f"{base}/message | jq{Style.RESET_ALL}")
-
-            print(f"\n{Fore.YELLOW}5. Get help for a specific command (e.g. busd):{Style.RESET_ALL}")
-            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
-                  "-H \"Content-Type: application/json\" "
-                  "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":4,\\\"method\\\":\\\"help\\\","
-                  "\\\"params\\\":{\\\"command\\\":\\\"busd\\\"}}\" "
-                  f"{base}/message | jq{Style.RESET_ALL}")
-
-        print(f"\n{Fore.MAGENTA}Running... Press Ctrl+C to stop.{Style.RESET_ALL}\n")
+        print(
+            f"\n{Fore.MAGENTA}Running... Press {Style.BRIGHT}{Fore.RED}Ctrl+C{Style.RESET_ALL}{Fore.MAGENTA} to stop.{Style.RESET_ALL}\n")
 
     def start(self) -> int:
         """

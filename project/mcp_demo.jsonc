@@ -27,8 +27,14 @@
 	// Short project identifier
 	"description": "A standalone MCP service demo with three dummy shell tools.",
 	"mcp_server_port": 6275,
+	// Optional: whether to display curl/SSE usage examples in the greeting banner
+	"show_usage_examples": false,
+	// Optional: if true, auto-patch VS Code configuration files (mcp.json) for MCP integration
+	"patch_vscode_config": false,
 	// Port MCP server listens on
 	"mcp_server_bind_address": "0.0.0.0",
+	// Optional: Prefix automatically added to all tool names (null = no prefix)
+	"tools_prefix": null,
 	// 0.0.0.0 = all interfaces; 127.0.0.1 = localhost only
 	"version": "1.0.0",
 	// Config version
