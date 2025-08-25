@@ -16,6 +16,7 @@ mcp_service_demo/
 │   ├── local_types.py      # Local type definitions
 │   ├── platform_tools.py   # Platform helpers
 │   └── run_inspector.cmd   # Windows helper script to launch the MCP Inspector
+│
 └── project/                # Demo project definition
     │
     ├── mcp_demo.json       # Project metadata + tool definitions
