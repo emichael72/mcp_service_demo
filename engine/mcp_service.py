@@ -49,6 +49,7 @@ from urllib.parse import urlparse, parse_qsl, unquote
 
 # Third-party
 from aiohttp import web
+from colorama import Fore, Style
 
 # MCP Service imports
 from logger import CoreMCPLogger
@@ -954,57 +955,57 @@ class CoreMCPService:
             port (int): TCP port where the MCP service is listening.
             server_name (str): Name of the MCP service
             show_examples: If True, show example commands.
-            host_bind_address (ooptional str): Bind address to bind to the MCP server.
+            host_bind_address (optional str): Bind address to bind to the MCP server.
         """
 
         base = f"http://{host}:{port}"
-        title = "MCP SSE Service Info:"
+        title = f"{Fore.CYAN}MCP SSE Service Info:{Style.RESET_ALL}"
 
-        # Greetings
+        # Clear screen and print header
         print(f"\033]0;\007\033[2J\033[3J\033[H", end="")
-        print(f"\n{title}\n{'-' * len(title)}\n"
-              f"- Base:                  {base}\n"
-              f"- SSE stream:            {base}/sse\n"
-              f"- JSON-RPC message bus:  {base}/message\n"
-              f"- Name:                  {server_name}")
+        print(f"\n{title}\n{Fore.CYAN}{'-' * len('MCP SSE Service Info:')}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}- Base:{Style.RESET_ALL}                  {Fore.GREEN}{base}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}- SSE stream:{Style.RESET_ALL}            {Fore.GREEN}{base}/sse{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}- JSON-RPC message bus:{Style.RESET_ALL}  {Fore.GREEN}{base}/message{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}- Name:{Style.RESET_ALL}                  {Fore.GREEN}{server_name}{Style.RESET_ALL}")
         if isinstance(host_bind_address, str):
-            print(f"- Bind address:          {host_bind_address}")
+            print(
+                f"{Fore.YELLOW}- Bind address:{Style.RESET_ALL}          {Fore.GREEN}{host_bind_address}{Style.RESET_ALL}")
 
         if show_examples:
-            # Examples
-            print("\nExample commands you can run in another shell:")
+            print(f"\n{Fore.CYAN}Example commands you can run in another shell:{Style.RESET_ALL}")
 
-            print("\n1. Listen for SSE broadcasts:")
-            print(f"   curl -s -N --noproxy {host} {base}/sse")
+            print(f"\n{Fore.YELLOW}1. Listen for SSE broadcasts:{Style.RESET_ALL}")
+            print(f"   {Fore.WHITE}curl -s -N --noproxy {host} {base}/sse{Style.RESET_ALL}")
 
-            print("\n2. List available tools:")
-            print(f"   curl -s --noproxy {host} "
+            print(f"\n{Fore.YELLOW}2. List available tools:{Style.RESET_ALL}")
+            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"tools/list\\\",\\\"params\\\":{}}\" "
-                  f"{base}/message | jq")
+                  f"{base}/message | jq{Style.RESET_ALL}")
 
-            print("\n3. Execute tool 'tool_a' with argument 'Allice':")
-            print(f"   curl -s --noproxy {host} "
+            print(f"\n{Fore.YELLOW}3. Execute tool 'tool_a' with argument 'Alice':{Style.RESET_ALL}")
+            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":2,\\\"method\\\":\\\"tools/call\\\","
                   "\\\"params\\\":{\\\"name\\\":\\\"tool_a\\\",\\\"arguments\\\":{\\\"args\\\":[\\\"Alice\\\"]}}}\" "
-                  f"{base}/message | jq")
+                  f"{base}/message | jq{Style.RESET_ALL}")
 
-            print("\n4. Get help (all commands):")
-            print(f"   curl -s --noproxy {host} "
+            print(f"\n{Fore.YELLOW}4. Get help (all commands):{Style.RESET_ALL}")
+            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":3,\\\"method\\\":\\\"help\\\","
                   "\\\"params\\\":{}}\" "
-                  f"{base}/message | jq")
+                  f"{base}/message | jq{Style.RESET_ALL}")
 
-            print("\n5. Get help for a specific command (e.g. busd):")
-            print(f"   curl -s --noproxy {host} "
+            print(f"\n{Fore.YELLOW}5. Get help for a specific command (e.g. busd):{Style.RESET_ALL}")
+            print(f"   {Fore.WHITE}curl -s --noproxy {host} "
                   "-H \"Content-Type: application/json\" "
                   "-d \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":4,\\\"method\\\":\\\"help\\\","
                   "\\\"params\\\":{\\\"command\\\":\\\"busd\\\"}}\" "
-                  f"{base}/message | jq")
+                  f"{base}/message | jq{Style.RESET_ALL}")
 
-        print("\nRunning... Press Ctrl+C to stop.\n")
+        print(f"\n{Fore.MAGENTA}Running... Press Ctrl+C to stop.{Style.RESET_ALL}\n")
 
     def start(self) -> int:
         """

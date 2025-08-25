@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 # Third-party
-from colorama import Fore, Style
+from colorama import Fore, Style, init
 
 # MCP Service imports
 from local_types import ExceptionGuru
@@ -67,6 +67,7 @@ def main() -> int:
         Shell status, 0 success, else failure.
     """
     result: int = 1  # Default to error
+    init(autoreset=True)  # Init colorama
 
     try:
         args = parse_args()
