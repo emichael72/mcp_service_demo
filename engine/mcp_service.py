@@ -58,6 +58,7 @@ AUTO_FORGE_MODULE_NAME = "MCP"
 AUTO_FORGE_MODULE_DESCRIPTION = "MCP (Model Context Protocol) integration for AutoForge"
 AUTO_FORGE_MAX_BATCH_MCP_COMMANDS = 64
 AUTO_FORGE_BUSY_CODE = -32004
+AUTO_FORGE_DEFAULT_PORT = 6274
 
 
 @dataclass
@@ -65,33 +66,48 @@ class _CoreMCPConfigType:
     """ Configuration for the MCP server connection. """
     host: Optional[str] = None
     advertise_ip: Optional[str] = None
-    port: int = 6274
+    port: int = AUTO_FORGE_DEFAULT_PORT
     readonly: bool = False
 
 
-@dataclass
 class _CoreMCPToolType:
     """
     Represents a callable MCP (Model Context Protocol) tool.
-
     Attributes:
         name (str): Unique tool name as exposed to MCP clients.
         description (str): Short human-readable description of the tool's purpose.
-        input_schema (dict[str, Any]): JSON Schema describing the tool's expected input
-            parameters (used for validation and discovery in MCP clients).
-            Async or sync callable that executes the tool logic.
-            Accepts a dictionary of parameters matching `input_schema` and returns
-            a result dictionary (arbitrary structure, but JSON-serializable).
-
-    Methods:
-        call(params):
-            Executes the tool handler with the given parameters.
-            Supports both asynchronous and synchronous handlers.
+        input_schema (dict[str, Any]): JSON Schema describing the tool's expected
+            input parameters (used for validation and discovery in MCP clients).
+        command (str): Path to the binary or script to execute.
+        working_dir (Optional[str]): Directory where the command should be executed.
+        args (list[str]): Static arguments always passed to the command.
+        params (list[dict[str, Any]]): Dynamic parameters schema that can be mapped
+            to runtime arguments (name, type, description).
+        env (dict[str, str]): Optional environment variables to set when running.
+        resource (Optional[str]): Path to a documentation resource for this tool.
     """
-    name: str
-    description: str
-    input_schema: dict[str, Any]  # JSON Schema
-    path: str
+
+    def __init__(
+            self,
+            name: str,
+            description: str,
+            input_schema: dict[str, Any],
+            command: str,
+            working_dir: Optional[str] = None,
+            args: Optional[list[str]] = None,
+            params: Optional[list[dict[str, Any]]] = None,
+            env: Optional[dict[str, str]] = None,
+            resource: Optional[str] = None,
+    ):
+        self.name = name
+        self.description = description
+        self.input_schema = input_schema
+        self.command = command
+        self.working_dir = working_dir
+        self.args = args or []
+        self.params = params or []
+        self.env = env or {}
+        self.resource = resource
 
 
 class CoreMCPService:
@@ -137,7 +153,7 @@ class CoreMCPService:
 
         self._mcp_server_name = self._project_data.get("project_name", "MCP service")
         self._mcp_server_version = self._project_data.get("version", "1.0.0")
-        self._commands_data: Optional[dict[str, Any]] = self._project_data.get("commands", {})
+        self._tools_data: Optional[dict[str, Any]] = self._project_data.get("tools", {})
 
         # Port and optional host bind address
         self._mcp_server_port = self._project_data.get("mcp_server_port", self._mcp_config.port)
@@ -151,7 +167,6 @@ class CoreMCPService:
 
         # Manual endpoints
         self._app.router.add_get("/status", self._status_handler)
-        self._app.router.add_post("/shutdown", self._shutdown_handler)
         self._app.router.add_get("/sse", self._sse_handler)
         self._app.router.add_post("/message", self._rpc_handler)
         self._app.router.add_get("/help", self._help_handler)
@@ -178,23 +193,9 @@ class CoreMCPService:
             "port": self._mcp_config.port,
             "readonly": bool(self._mcp_config.readonly),
             "tool_count": sum(
-                1 for k, v in self._commands_data.items() if not v.get("hidden")
+                1 for k, v in self._tools_data.items() if not v.get("hidden")
             )
         })
-
-    async def _shutdown_handler(self, _request: web.Request) -> web.Response:
-        """
-        Initiate a graceful shutdown of the MCP server.
-        Returns:
-            200 OK with {"status": "shutting_down"} when accepted.
-            403 if server is in read-only mode.
-        """
-        if getattr(self._mcp_config, "readonly", False):
-            return self._json_response({"error": "readonly mode"}, status=403)
-
-        # Signal the run loop to exit; cleanup happens in _run_sse()'s finally block.
-        self._shutdown_event.set()
-        return self._json_response({"status": "shutting_down"})
 
     async def _help_handler(self, _request: web.Request) -> web.Response:
         """
@@ -384,6 +385,7 @@ class CoreMCPService:
                         "capabilities": {
                             "tools": {},
                             "resources": {},
+                            "templates": {},
                             "prompts": {}
                         },
                     }
@@ -406,7 +408,7 @@ class CoreMCPService:
                 elif method == "resources/list":
 
                     resources = []
-                    for tool_name, tool_info in self._project_data.get("commands", {}).items():
+                    for tool_name, tool_info in self._project_data.get("tools", {}).items():
                         resource_path = tool_info.get("resource")
                         if not resource_path:
                             continue
@@ -619,54 +621,58 @@ class CoreMCPService:
             dumps=lambda x: json.dumps(x, indent=2, ensure_ascii=False) + "\n",
         )
 
-    async def _run_one_cmdline_async(self, line: str) -> dict[str, Any]:
+    async def _run_one_cmdline_async(self,
+                                     line: Optional[str] = None,
+                                     argv: Optional[list[str]] = None,
+                                     cwd: Optional[str] = None,
+                                     env: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """
-        Run a single command line asynchronously inside the build shell.
+        Run a single command asynchronously inside the build shell.
+        Args:
+            line (str, optional): Command line string (legacy path).
+            argv (list[str], optional): Command as argument vector (preferred).
+            cwd (str, optional): Working directory to execute in.
+            env (dict[str, str], optional): Environment variables to apply.
 
-        Behavior:
-            - Executes the given `line` using subprocess.
-            - Captures logs incrementally and streams them to SSE clients as
-              {"event": "log", "data": "<line>"} while the command is running.
-            - Returns a final JSON-compatible dict containing:
-                * status  : exit status (int)
-                * logs    : full list of logs (list[str])
-                * summary : execution summary (str)
-                * output  : optional parsed output (dict or list, if applicable)
-            - Emits a final {"event": "done", ...} broadcast with the same result.
         """
-        logs: list[str] = []
+        logs: list[str] = []  # Executed process output lines
+        current_work_dir = str(cwd) if cwd is not None else str(Path.cwd())
 
+        if argv is None:
+            if not line:
+                raise ValueError("Must provide either argv or line")
+            argv = shlex.split(line)
+
+        self._log_line(f"Executing: {argv}, cwd: {current_work_dir}", level="debug")
         try:
             proc = await asyncio.create_subprocess_exec(
-                *shlex.split(line),
-                cwd=Path.cwd(),
+                *argv,
+                cwd=current_work_dir,
+                env=env or os.environ.copy(),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
         except Exception as execute_error:
-            raise RuntimeError(f"Failed to launch {line}: {execute_error}")
+            raise RuntimeError(f"Failed to launch {argv!r}: {execute_error}")
 
-        # Read output line by line
+        # Stream logs
+        assert proc.stdout is not None
         async for raw_line in proc.stdout:
             decoded: str = raw_line.decode(errors="replace")
             text = decoded.rstrip()
             logs.append(text)
 
-            # Broadcast incremental log line
             with contextlib.suppress(Exception):
                 await self._broadcast({"event": "log", "data": text})
 
-        # Wait for process to complete
         status = await proc.wait()
 
-        # Final result object
         result: dict[str, Any] = {
             "status": status,
             "logs": logs,
-            "summary": f"Executed: {line} (exit {status})",
+            "summary": f"Executed: {' '.join(argv)} (exit {status})",
         }
 
-        # Broadcast completion
         with contextlib.suppress(Exception):
             await self._broadcast({"event": "done", **result})
 
@@ -674,42 +680,38 @@ class CoreMCPService:
 
     def _register_all_commands(self) -> None:
         """
-        Register all loaded commands both as MCP tools (for SSE JSON-RPC)
+        Register all loaded tools both as MCP tools (for SSE JSON-RPC)
         and, optionally, as REST POST endpoints under /tool/<name>.
-
-        Commands marked as hidden or of type 'NAVIGATE' are skipped.
-        Tool names are prefixed and must match MCP naming rules [a-z0-9_-].
         """
 
-        if not isinstance(self._commands_data, dict) or not self._commands_data:
-            raise TypeError("commands_data must be a non-empty dict")
+        if not isinstance(self._tools_data, dict) or not self._tools_data:
+            raise TypeError("tools must be a non-empty dict")
 
-        for key, entry in self._commands_data.items():
-
+        for key, entry in self._tools_data.items():
             tool_name = f"{self._tool_prefix}{key}"
             if not re.fullmatch(r"[a-z0-9_-]+", tool_name):
                 raise RuntimeError(f"Invalid MCP tool name: {tool_name}")
 
             description = entry.get("description") or f"Run '{key}' tool."
 
-            _tools_path = entry.get("path")
-            if not _tools_path:
-                raise RuntimeError(f"Invalid 'path' in MCP tool entry: {tool_name}")
+            command = entry.get("command")
+            if not command:
+                raise RuntimeError(f"Missing 'command' in MCP tool entry: {tool_name}")
 
-            # Wrap into a tuple so multiple paths could be supported later
-            _cmds_tuple = (_tools_path,)
+            working_dir = entry.get("working_dir")
+            static_args = entry.get("args", [])
+            params = entry.get("params", [])
+            env = entry.get("env", {})
+            resource = entry.get("resource")
 
-            # MCP-compatible JSON schema
+            # MCP-compatible JSON schema from declared params
             input_schema = {
                 "type": "object",
                 "properties": {
-                    "args": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional command-line arguments",
-                    }
+                    p["name"]: {"type": p.get("type", "string"), "description": p.get("description", "")}
+                    for p in params
                 },
-                "required": [],
+                "required": [p["name"] for p in params],  # all listed params required
                 "additionalProperties": False,
             }
 
@@ -718,36 +720,41 @@ class CoreMCPService:
                 name=tool_name,
                 description=description,
                 input_schema=input_schema,
-                path=_tools_path
+                command=command,
+                working_dir=working_dir,
+                args=static_args,
+                params=params,
+                env=env,
+                resource=resource,
             ))
 
             # Legacy REST fallback
-            def make_handler(_cmds=_cmds_tuple):
+            def make_handler(_command=command, _args=static_args, _cwd=working_dir, _env=env):
                 async def handler(request):
                     payload = {}
                     with contextlib.suppress(Exception):
                         payload = await request.json()
 
-                    raw_args = payload.get("args", [])
-                    arg_list = []
+                    # Merge static args + runtime args
+                    runtime_args = []
+                    with contextlib.suppress(Exception):
+                        raw_args = payload.get("args", [])
+                        if isinstance(raw_args, str):
+                            runtime_args = [raw_args]
+                        elif isinstance(raw_args, list):
+                            runtime_args = [str(a) for a in raw_args]
 
-                    # Normalize args into a list of strings
-                    if isinstance(raw_args, str):
-                        arg_list = [raw_args]
-                    elif isinstance(raw_args, list):
-                        arg_list = [str(a) for a in raw_args]
-
-                    extra = " ".join(arg_list).strip()
-
-                    lines = []
-                    for raw in _cmds:
-                        line = f"{raw} {extra}" if extra else raw
-                        line = os.path.expandvars(line)
-                        lines.append(line)
+                    final_argv = [_command] + _args + runtime_args
+                    line = " ".join(final_argv)
+                    line = os.path.expandvars(line)
 
                     try:
-                        results = [await self._run_one_cmdline_async(line) for line in lines]
-                        return self._json_response({"results": results})
+                        result = await self._run_one_cmdline_async(
+                            line,
+                            cwd=_cwd,
+                            env={**os.environ, **_env}
+                        )
+                        return self._json_response({"results": [result]})
                     except Exception as e:
                         return self._json_response({"error": str(e)}, status=500)
 
@@ -774,16 +781,39 @@ class CoreMCPService:
         if not tool:
             raise KeyError(f"unknown tool: {name}")
 
-        # Build the command line
-        raw_args = arguments.get("args", [])
-        arg_list = [raw_args] if isinstance(raw_args, str) \
-            else [str(a) for a in raw_args] if isinstance(raw_args, list) else []
+        # Start with the base command
+        argv: list[str] = [tool.command]
 
-        tool_path = str(Path(tool.path).resolve())
-        cmdline = " ".join([tool_path] + arg_list)
+        # Add static args
+        if tool.args:
+            argv.extend(tool.args)
 
-        # Run via service method
-        return await self._run_one_cmdline_async(cmdline)
+        # Add dynamic params from JSON -> CLI
+        for p in tool.params:
+            pname = p["name"]
+            if pname not in arguments:
+                continue
+
+            val = arguments[pname]
+            style = p.get("style", "flag")  # default to "flag"
+
+            if style == "positional":
+                argv.append(str(val))
+            elif style == "flag":
+                argv.extend([f"--{pname}", str(val)])
+            else:
+                raise ValueError(f"Unknown param style '{style}' for {pname}")
+
+        cmdline = " ".join(argv)
+        cmdline = os.path.expandvars(cmdline)
+
+        # Merge environment (base + tool-specific overrides)
+        env = {**os.environ, **tool.env}
+
+        return await self._run_one_cmdline_async(
+            cmdline,
+            cwd=tool.working_dir,
+            env=env, )
 
     def _rpc_tools_list(self) -> dict[str, Any]:
         """

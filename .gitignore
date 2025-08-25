@@ -6,6 +6,10 @@ engine/.idea/
 .venv/
 engine/.venv/
 
+# Ignore VScode settings
+.vscode/
+project/.vscode/
+
 # Optional: Python cache files
 __pycache__/
 *.pyc

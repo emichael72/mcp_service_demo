@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./tools_c.sh <file>
+# Usage: ./count_lines.sh <file>
 # Counts number of lines in the file
 
 if [ ! -f "$1" ]; then

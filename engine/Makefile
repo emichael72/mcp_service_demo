@@ -19,7 +19,7 @@
 
 PYTHON   := python3
 VENV_DIR := .venv
-REQ_PKGS := aiohttp colorama
+REQ_PKGS := aiohttp colorama json5
 ENGINE   := mcp.py
 
 .PHONY: all install uninstall check-python run

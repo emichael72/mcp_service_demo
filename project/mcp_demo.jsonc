@@ -1,0 +1,162 @@
+/*
+    MCP Demo configuration file
+    ---------------------------
+
+    Note: This file uses JSONC — an extended JSON format that supports inline comments and multi-line strings.
+    This allows for improved readability and documentation which are not valid standard JSON.
+
+	Purpose:
+	  Defines the configuration for the demo MCP service, including:
+	    - General project metadata
+	    - MCP server bind/port settings
+	    - Tool definitions (how to call external commands/scripts)
+	    - Templates (pre-baked example tool calls)
+
+	Top-level keys:
+	  project_name              : Human-readable project identifier
+	  description               : Longer text describing the project purpose
+	  mcp_server_port           : TCP port the MCP service listens on
+	  mcp_server_bind_address   : Bind address (use "0.0.0.0" for all interfaces)
+	  version                   : Semantic version string for this config
+	  tools                     : Dictionary of tool definitions
+	  templates                 : Example tool invocations, for quick testing/demo
+*/
+
+{
+	"project_name": "Demo Project",
+	// Short project identifier
+	"description": "A standalone MCP service demo with three dummy shell tools.",
+	"mcp_server_port": 6275,
+	// Port MCP server listens on
+	"mcp_server_bind_address": "0.0.0.0",
+	// 0.0.0.0 = all interfaces; 127.0.0.1 = localhost only
+	"version": "1.0.0",
+	// Config version
+
+	"tools": {
+		/*
+			Each entry in "tools" defines one callable tool.
+			Schema for a tool:
+			  description  : Human-readable explanation of what the tool does
+			  command      : The binary/script to run (absolute or relative path)
+			  working_dir  : (optional) Directory where the tool is executed
+			  args         : (optional) Fixed argument list always passed
+			  env          : (optional) Environment variables for the tool
+			  params       : (optional) List of dynamic arguments accepted
+			      - name        : Parameter name
+			      - type        : Expected type (string, integer, etc.)
+			      - description : Explanation for the parameter
+			  resource     : (optional) Path to documentation file
+		*/
+
+		"greet_user": {
+			"description": "Prints a greeting for the given name.",
+			"command": "tools/greet_user.sh",
+			"working_dir": null,
+			// If omitted or null → current directory is used
+			"args": [],
+			// No fixed args
+			"env": {},
+			// No custom env vars
+			"params": [
+				{
+					"name": "name",
+					"type": "string",
+					"description": "Name of the user to greet",
+					"style": "flag"
+					// Argument passing style:
+					//   "flag"       → passed as --<name> <value> (e.g. --name Alice)
+					//   "positional" → passed as a bare positional arg in order (e.g. Alice)
+					// If omitted, defaults to "flag".
+				}
+			],
+			"resource": "resources/greet_user.md"
+		},
+		"get_rand": {
+			"description": "Generates a random number up to a specified maximum (default 100).",
+			"command": "tools/get_rand.sh",
+			"params": [
+				{
+					"name": "max",
+					"type": "integer",
+					"description": "Maximum range",
+					"style": "positional"
+				}
+			],
+			"resource": "resources/get_rand.md"
+		},
+		"count_lines": {
+			"description": "Counts the number of lines in a given file.",
+			"command": "tools/count_lines.sh",
+			"params": [
+				{
+					"name": "file",
+					"type": "string",
+					"description": "File name",
+					"style": "positional"
+				}
+			],
+			"resource": "resources/count_lines.md"
+		},
+		"echo_message": {
+			"description": "Echo a message with optional formatting using Python.",
+			"command": "python3",
+			"env": {
+				"DUMMY_KEY": "DUMMY_VALUE"
+				// Example environment variable
+			},
+			"args": [
+				"tools/echo_message.py",
+				"--uppercase"
+				// Default arg always applied
+			],
+			"params": [
+				{
+					"name": "message",
+					"type": "string",
+					"description": "The message to print",
+					"style": "positional"
+					// message is positional
+				},
+				{
+					"name": "repeat",
+					"type": "integer",
+					"description": "How many times to repeat the message",
+					"style": "flag"
+					// repeat is a flag (--repeat N)
+				}
+			],
+			"resource": "resources/echo_message.md"
+		}
+	},
+	"templates": {
+		/*
+		Templates are **predefined example invocations** of tools.
+		They provide convenience shortcuts and documentation for common usage patterns.
+
+		Schema:
+		  description : Human-readable explanation of what this template does
+		  command     : The tool name (must match a key under "tools")
+		  args        : Arguments to pre-fill for this example
+		*/
+
+		"say_hello": {
+			"description": "Template to greet a specific user using greet_user",
+			"command": "greet_user",
+			// Must match one of the tools above
+			"args": {
+				"name": "Alice"
+				// Predefined argument
+			}
+		},
+		"pick_number": {
+			"description": "Template to generate a random number up to 100 using get_rand",
+			"command": "get_rand",
+			// Must match one of the tools above
+			"args": {
+				"max": 100
+				// Predefined maximum value
+			}
+		}
+	}
+}

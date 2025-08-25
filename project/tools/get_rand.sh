@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./tools_b.sh [max]
+# Usage: ./get_rand.sh [max]
 # Generates a random number up to the given max (default 100)
 
 MAX=${1:-100}

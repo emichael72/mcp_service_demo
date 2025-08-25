@@ -9,12 +9,12 @@ Description:
 """
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
 from typing import Optional, Any
 
+import json5
 # Third-party
 from colorama import Fore, Style, init
 
@@ -22,7 +22,7 @@ from colorama import Fore, Style, init
 from local_types import ExceptionGuru
 from mcp_service import CoreMCPService
 
-MCP_ENGINE_VERSION = "1.0"
+MCP_ENGINE_VERSION = "1.1"
 
 
 def parse_args():
@@ -46,18 +46,19 @@ def parse_args():
 
 def load_project(json_path: Path) -> Optional[dict[str, Any]]:
     """
-    Load and parse the project JSON file.
+    Load and parse the project JSONC/JSON5 file.
     Args:
-        json_path: Absolute path to the JSON file.
+        json_path: Absolute path to the JSONC/JSON5 file.
     Returns:
         Parsed project dictionary, or None on failure.
     """
     try:
         with open(json_path, "r", encoding="utf-8") as f:
-            project = json.load(f)
+            project = json5.load(f)
         return project
-    except Exception as e:
-        raise RuntimeError(f"Failed to load {json_path}: {e}", file=sys.stderr)
+    except Exception as json_error:
+        print(f"Failed to load {json_path}: {json_error}")
+        return None
 
 
 def main() -> int:
@@ -95,7 +96,7 @@ def main() -> int:
                 mcp_service = CoreMCPService(
                     project_data=project_data,
                     tools_prefix="",
-                    patch_vscode_config=False,
+                    patch_vscode_config=True,
                     show_usage_examples=True, )
 
                 mcp_service.start()
