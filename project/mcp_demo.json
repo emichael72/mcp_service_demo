@@ -1,37 +1,50 @@
 {
 	"project_name": "Demo Project",
 	"description": "A standalone MCP service demo with three dummy shell tools.",
+	"mcp_server_port": 6275,
+	"mcp_server_bind_address": "0.0.0.0",
 	"version": "1.0.0",
 	"commands": {
 		"tool_a": {
-			"hidden": false,
-			"cmd_type": "AUTOMATION",
 			"description": "Prints a greeting for the given name.",
 			"path": "tools/tool_a.sh",
 			"args": [
 				"<name>"
 			],
-			"resource": "resources/tools_a.md"
+			"resource": "resources/tool_a.md"
 		},
 		"tool_b": {
-			"hidden": false,
-			"cmd_type": "AUTOMATION",
 			"description": "Generates a random number up to a specified maximum (default 100).",
 			"path": "tools/tool_b.sh",
 			"args": [
 				"[max]"
 			],
-			"resource": "resources/tools_b.md"
+			"resource": "resources/tool_b.md"
 		},
 		"tool_c": {
-			"hidden": false,
-			"cmd_type": "AUTOMATION",
 			"description": "Counts the number of lines in a given file.",
 			"path": "tools/tool_c.sh",
 			"args": [
 				"<file>"
 			],
-			"resource": "resources/tools_c.md"
+			"resource": "resources/tool_c.md"
+		}
+	},
+
+	"templates": {
+		"greet_user": {
+			"description": "Template to greet a specific user using tool_a",
+			"command": "tool_a",
+			"args": {
+				"<name>": "Alice"
+			}
+		},
+		"random_number": {
+			"description": "Template to generate a random number up to 500 using tool_b",
+			"command": "tool_b",
+			"args": {
+				"[max]": "500"
+			}
 		}
 	}
 }

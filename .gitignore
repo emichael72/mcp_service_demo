@@ -1,7 +1,9 @@
 # Ignore PyCharm project files
+.idea/
 engine/.idea/
 
 # Ignore Python virtual environment
+.venv/
 engine/.venv/
 
 # Optional: Python cache files

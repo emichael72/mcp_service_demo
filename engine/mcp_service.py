@@ -1,3 +1,4 @@
+# noinspection SpellCheckingInspection
 """
 Script:         mcp_service.py
 Author:         DevOps Team
@@ -24,6 +25,7 @@ Description:
     Note:
         Test using: Inspector fom https://modelcontextprotocol.io/legacy/tools/inspector
         Install from https://github.com/modelcontextprotocol/inspector (node.js)
+        WSL: Must disable 'networkingmode = mirrored' in C:\\Users\\<YourWindowsUsername>\\.wslconfig
         Example:
             Using in Windows Command Prompt
             set MCP_PROXY_AUTH_TOKEN=foobar
@@ -43,6 +45,7 @@ from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Optional, Any, Union
+from urllib.parse import urlparse, parse_qsl, unquote
 
 # Third-party
 from aiohttp import web
@@ -60,6 +63,7 @@ AUTO_FORGE_BUSY_CODE = -32004
 class _CoreMCPConfigType:
     """ Configuration for the MCP server connection. """
     host: Optional[str] = None
+    advertise_ip: Optional[str] = None
     port: int = 6274
     readonly: bool = False
 
@@ -120,9 +124,12 @@ class CoreMCPService:
         self._patch_vscode_config: bool = patch_vscode_config
         self._tool_prefix: str = tools_prefix
         self._show_usage_examples: bool = show_usage_examples
+        self._mcp_server_bind_address: Optional[str] = None
+        self._mcp_server_port: Optional[int] = 0
         self._shutting_down: bool = False
         self._log_request: bool = False
         self._brutal_termination: bool = False
+        self._project_base_path: str = os.getcwd()
 
         if not isinstance(project_data, dict):
             raise TypeError("project_data must be a dict")
@@ -130,6 +137,11 @@ class CoreMCPService:
         self._mcp_server_name = self._project_data.get("project_name", "MCP service")
         self._mcp_server_version = self._project_data.get("version", "1.0.0")
         self._commands_data: Optional[dict[str, Any]] = self._project_data.get("commands", {})
+
+        # Port and optional host bind address
+        self._mcp_server_port = self._project_data.get("mcp_server_port", self._mcp_config.port)
+        self._mcp_config.port = self._mcp_server_port
+        self._mcp_server_bind_address = self._project_data.get("mcp_server_bind_address")
 
         self._app = web.Application()
 
@@ -390,6 +402,83 @@ class CoreMCPService:
 
                 # -----------------------------------------------------------------
 
+                elif method == "resources/list":
+
+                    resources = []
+                    for tool_name, tool_info in self._project_data.get("commands", {}).items():
+                        resource_path = tool_info.get("resource")
+                        if not resource_path:
+                            continue
+                        abs_path = os.path.join(self._project_base_path, resource_path)
+                        uri = f"file://{os.path.abspath(abs_path)}"
+                        resources.append({
+                            "name": tool_name,
+                            "uri": uri,
+                            "mimeType": "text/markdown"
+                        })
+                    return ok({"resources": resources})
+
+                # -----------------------------------------------------------------
+
+                elif method == "resources/read":
+
+                    uri = params.get("uri")
+                    if not uri or not uri.startswith("file://"):
+                        return make_error(-32602, f"Invalid or missing URI: {uri}")
+
+                    parsed = urlparse(uri)
+                    path = unquote(parsed.path)
+                    query_params = dict(parse_qsl(parsed.query))
+
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            text = f.read()
+                    except Exception as read_error:
+                        return make_error(-32000, f"Failed to read resource {uri}: {read_error}")
+
+                    # --- Dynamic substitution demo: used in templates  ---
+                    if query_params:
+                        # Append a small note at the bottom of the Markdown
+                        args_str = ", ".join(f"{k}={v}" for k, v in query_params.items())
+                        text += f"\n\n---\n*Template arguments applied:* {args_str}\n"
+
+                    return ok({
+                        "contents": [
+                            {"uri": uri, "text": text}
+                        ]
+                    })
+                # -----------------------------------------------------------------
+
+                elif method in ("templates/list", "resources/templates/list"):
+                    resource_templates = []
+                    base = os.path.abspath(os.path.join(self._project_base_path, "resources"))
+
+                    for name, tmpl in self._project_data.get("templates", {}).items():
+                        args = []
+                        arg_name = ""
+                        for arg_name, default in tmpl.get("args", {}).items():
+                            args.append({
+                                "name": arg_name,
+                                "description": f"Argument for {tmpl.get('command')}",
+                                "default": default
+                            })
+
+                        # Build a simple uriTemplate using the resource path
+                        resource_path = tmpl.get("command").replace("tool_", "tool_") + ".md"
+                        uri_template = f"file://{base}/{resource_path}?{arg_name}={{{arg_name}}}"
+
+                        resource_templates.append({
+                            "name": name,
+                            "description": tmpl.get("description", ""),
+                            "uriTemplate": uri_template,
+                            "arguments": args
+                        })
+
+                    return ok({"resourceTemplates": resource_templates})
+
+
+                # -----------------------------------------------------------------
+
                 elif method == "tools/call":
                     tool_name = params.get("name", "<?>")
                     with contextlib.suppress(Exception):
@@ -417,17 +506,21 @@ class CoreMCPService:
                                 "params": {"name": tool_name, "result": result},
                             })
 
-                        # Adapt result for MCP inspector
-                        if isinstance(result, str):
-                            wrapped = {
-                                "isError": False,
-                                "content": [{"type": "text", "text": result}]
-                            }
-                        else:
-                            wrapped = {
-                                "isError": False,
-                                "content": [{"type": "json", "json": result}]
-                            }
+                            # Adapt result for MCP inspector
+                            if isinstance(result, str):
+                                wrapped = {
+                                    "isError": False,
+                                    "content": [{"type": "text", "text": str(result)}]
+                                }
+                            else:
+                                # Dump dicts cleanly to text
+                                wrapped = {
+                                    "isError": False,
+                                    "content": [{
+                                        "type": "text",
+                                        "text": "\n" + json.dumps(result, indent=2)
+                                    }]
+                                }
 
                         return ok(wrapped)
 
@@ -542,17 +635,20 @@ class CoreMCPService:
         """
         logs: list[str] = []
 
-        proc = await asyncio.create_subprocess_exec(
-            *shlex.split(line),
-            cwd=Path.cwd(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *shlex.split(line),
+                cwd=Path.cwd(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except Exception as execute_error:
+            raise RuntimeError(f"Failed to launch {line}: {execute_error}")
 
-        assert proc.stdout is not None  # <- debugger never gets to this point
         # Read output line by line
         async for raw_line in proc.stdout:
-            text = raw_line.decode(errors="replace").rstrip()
+            decoded: str = raw_line.decode(errors="replace")
+            text = decoded.rstrip()
             logs.append(text)
 
             # Broadcast incremental log line
@@ -588,8 +684,6 @@ class CoreMCPService:
             raise TypeError("commands_data must be a non-empty dict")
 
         for key, entry in self._commands_data.items():
-            if entry.get("hidden") or entry.get("cmd_type", "").upper() == "NAVIGATE":
-                continue
 
             tool_name = f"{self._tool_prefix}{key}"
             if not re.fullmatch(r"[a-z0-9_-]+", tool_name):
@@ -734,8 +828,8 @@ class CoreMCPService:
 
     @staticmethod
     def _remove_vscode_config(base_path: Optional[Union[Path, str]],
-                              host_ip: str,
-                              host_port: int,
+                              host: str,
+                              port: int,
                               server_name: str) -> bool:
         """
         Quietly remove a server entry from an existing VS Code MCP config.
@@ -743,8 +837,8 @@ class CoreMCPService:
             base_path (Union[Path, str], optional):
                 Workspace base directory containing the .vscode folder.
                 If None, use the solution workspace (PROJ_WORKSPACE).
-            host_ip (str): Host IP address to match in the config.
-            host_port (int): Host port to match in the config.
+            host (str): Host IP address to match in the config.
+            port (int): Host port to match in the config.
             server_name (str): Server key to remove (default: "autoforge").
 
         Returns:
@@ -752,7 +846,7 @@ class CoreMCPService:
                   False if an error occurred.
         """
         if base_path is None:
-            raise ValueError("base_path cannot be None")
+            base_path = os.getcwd()
 
         vscode_dir = Path(base_path).expanduser().resolve() / ".vscode"
         config_path = vscode_dir / "mcp.json"
@@ -764,7 +858,7 @@ class CoreMCPService:
             with config_path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            url_to_remove = f"http://{host_ip}:{host_port}"
+            url_to_remove = f"http://{host}:{port}"
             servers = data.get("servers", {})
 
             if server_name in servers:
@@ -783,8 +877,8 @@ class CoreMCPService:
 
     @staticmethod
     def _generate_vscode_config(base_path: Optional[Union[Path, str]],
-                                host_ip: str,
-                                host_port: int,
+                                host: str,
+                                port: int,
                                 server_name: str,
                                 overwrite_existing: bool = True,
                                 create_parents: bool = False,
@@ -794,8 +888,8 @@ class CoreMCPService:
         Args:
             base_path: Base directory where '.vscode/mcp.json' will be written.
                          If None, uses self._variables['PROJ_WORKSPACE'].
-            host_ip: IP for the SSE server.
-            host_port: Port for the SSE server.
+            host: IP for the SSE server.
+            port: Port for the SSE server.
             server_name: Key under "servers" to write/update (default: "autoforge").
             overwrite_existing: If True, overwrite the existing <server_name> entry
                                 if present. If False, only add it if missing.
@@ -806,7 +900,7 @@ class CoreMCPService:
             bool: True if the config file was written/updated, False otherwise.
         """
         if base_path is None:
-            raise ValueError("base_path cannot be None")
+            base_path = os.getcwd()
 
         base_dir = Path(base_path).expanduser().resolve()
 
@@ -832,7 +926,7 @@ class CoreMCPService:
             data = {}
 
         servers = data.setdefault("servers", {})
-        new_entry = {"type": "sse", "url": f"http://{host_ip}:{host_port}"}
+        new_entry = {"type": "sse", "url": f"http://{host}:{port}"}
 
         if server_name not in servers or overwrite_existing or servers[server_name] != new_entry:
             servers[server_name] = new_entry
@@ -851,7 +945,7 @@ class CoreMCPService:
 
     # noinspection SpellCheckingInspection
     @staticmethod
-    def _greetings(host: str, port: int, server_name: str, show_examples: bool = False):
+    def _greetings(host: str, port: int, server_name: str, show_examples: bool = False, host_bind_address: str = None):
         """
         Display greetings and optionally example 'curl' commands that can be copied and run directly
         in a console window to interact with the SSE server.
@@ -860,6 +954,7 @@ class CoreMCPService:
             port (int): TCP port where the MCP service is listening.
             server_name (str): Name of the MCP service
             show_examples: If True, show example commands.
+            host_bind_address (ooptional str): Bind address to bind to the MCP server.
         """
 
         base = f"http://{host}:{port}"
@@ -868,9 +963,12 @@ class CoreMCPService:
         # Greetings
         print(f"\033]0;\007\033[2J\033[3J\033[H", end="")
         print(f"\n{title}\n{'-' * len(title)}\n"
-              f"- SSE stream:            GET  {base}/sse\n"
-              f"- JSON-RPC message bus:  POST {base}/message\n"
+              f"- Base:                  {base}\n"
+              f"- SSE stream:            {base}/sse\n"
+              f"- JSON-RPC message bus:  {base}/message\n"
               f"- Name:                  {server_name}")
+        if isinstance(host_bind_address, str):
+            print(f"- Bind address:          {host_bind_address}")
 
         if show_examples:
             # Examples
@@ -934,8 +1032,8 @@ class CoreMCPService:
             if self._patch_vscode_config:
                 self._remove_vscode_config(
                     base_path=None,
-                    host_ip=self._mcp_config.host,
-                    host_port=self._mcp_config.port,
+                    host=self._mcp_config.advertise_ip,
+                    port=self._mcp_config.port,
                     server_name=self._mcp_server_name, )
             # Terminate
             if self._brutal_termination:
@@ -944,24 +1042,38 @@ class CoreMCPService:
                 loop.stop()
 
         try:
-            # Determine local outward-facing IP
-            with contextlib.suppress(Exception):
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                    s.connect(("8.8.8.8", 80))
-                    self._mcp_config.host = s.getsockname()[0]
+
+            # Determine the outward-facing local IP by opening a dummy UDP socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                self._mcp_config.advertise_ip = s.getsockname()[0]
+
+            if not isinstance(self._mcp_config.advertise_ip, str):
+                raise RuntimeError("Could not determine local IP address")
+
+            # Choose which host address to bind the server to:
+            # If a specific bind address is provided in the project JSON, use that.
+            # Otherwise, fall back to the discovered local IP.
+            # Note: binding to 0.0.0.0 (all interfaces) can sometimes resolve connectivity issues.
+
+            if isinstance(self._mcp_server_bind_address, str):
+                self._mcp_config.host = self._mcp_server_bind_address
+            else:
+                self._mcp_config.host = self._mcp_config.advertise_ip
 
             if not isinstance(self._mcp_config.host, str):
-                raise RuntimeError("Can't determine local IP address")
+                raise RuntimeError("Failed to resolve a valid host address")
 
             # Create VSCode 'mcp.json' file in the solution workspace
             if self._patch_vscode_config:
-                self._generate_vscode_config(base_path=None, host_ip=self._mcp_config.host,
-                                             host_port=self._mcp_config.port, server_name=self._mcp_server_name,
+                self._generate_vscode_config(base_path=None, host=self._mcp_config.advertise_ip,
+                                             port=self._mcp_config.port, server_name=self._mcp_server_name,
                                              overwrite_existing=True, create_parents=True)
 
             # Show welcome message and usage examples
-            self._greetings(host=self._mcp_config.host, port=self._mcp_config.port,
-                            server_name=self._mcp_server_name, show_examples=self._show_usage_examples)
+            self._greetings(host=self._mcp_config.advertise_ip, port=self._mcp_config.port,
+                            server_name=self._mcp_server_name, show_examples=self._show_usage_examples,
+                            host_bind_address=self._mcp_server_bind_address)
 
             # Prepare asyncio loop
             try:
