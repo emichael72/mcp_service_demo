@@ -6,7 +6,8 @@ It exposes a few simple shell tools as MCP-compatible JSON-RPC tools, served by 
 ## Repository Layout
 
 ```
-mcp_service/
+mcp_service_demo/
+│ 
 ├── engine/                 # Python engine
 │   ├── Makefile            # Setup (create venv, install deps)
 │   ├── mcp.py              # CLI entry point
@@ -16,6 +17,7 @@ mcp_service/
 │   ├── platform_tools.py   # Platform helpers
 │   └── run_inspector.cmd   # Windows helper script to launch the MCP Inspector
 └── project/                # Demo project definition
+    │
     ├── mcp_demo.json       # Project metadata + tool definitions
     ├── tools/              # Example tool scripts
     │   ├── tool_a.sh       # Greets a user
@@ -25,6 +27,7 @@ mcp_service/
     │   ├── tool_a.md
     │   ├── tool_b.md
     │   └── tool_c.md
+    │
     └── logs/               # Runtime logs (created by service)
 ```
 
