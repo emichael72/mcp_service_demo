@@ -15,6 +15,7 @@ class CoreMCPLogger:
     Very simplified logger implementation for terminal output.
     """
 
+    # noinspection SpellCheckingInspection
     _log_format: str = '[%(asctime)s %(levelname)-8s] %(name)-14s: %(message)s'
     _date_format: str = '%d-%m %H:%M:%S'
 

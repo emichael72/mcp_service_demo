@@ -309,19 +309,19 @@ class CoreMCPService:
 
         # Method gate first (cheap)
         if request.method != "POST":
-            error_body = _jr_err(jid=None, code=-32600, message="method not allowed")
+            error_body = _jr_err(_jid=None, _code=-32600, _message="method not allowed")
             return web.json_response(error_body)
 
         # Read body defensively
         raw = await request.read()
         if not raw:
-            error_body = _jr_err(jid=None, code=-32600, message="Empty request")
+            error_body = _jr_err(_jid=None, _code=-32600, _message="Empty request")
             return web.json_response(error_body)
 
         try:
             payload: Any = json.loads(raw.decode("utf-8"))
         except Exception as e:
-            error_body = _jr_err(jid=None, code=-32700, message="Parse error", data=str(e))
+            error_body = _jr_err(_jid=None, _code=-32700, _message="Parse error", _data=str(e))
             return web.json_response(error_body)
 
         with contextlib.suppress(Exception):
@@ -547,11 +547,11 @@ class CoreMCPService:
             if isinstance(payload, list):
                 # Empty batch is invalid
                 if len(payload) == 0:
-                    error_body = _jr_err(jid=None, code=-32600, message="invalid request (empty batch)")
+                    error_body = _jr_err(_jid=None, _code=-32600, _message="invalid request (empty batch)")
                     return web.json_response(error_body)
 
                 if len(payload) > AUTO_FORGE_MAX_BATCH_MCP_COMMANDS:
-                    error_body = _jr_err(jid=None, code=-32600, message="batch too large")
+                    error_body = _jr_err(_jid=None, _code=-32600, _message="batch too large")
                     return web.json_response(error_body)
 
                 replies: list[dict[str, Any]] = []
@@ -567,7 +567,7 @@ class CoreMCPService:
 
             # Single message
             if not isinstance(payload, dict):
-                error_body = _jr_err(jid=None, code=-32600, message="invalid request")
+                error_body = _jr_err(_jid=None, _code=-32600, _message="Invalid request")
                 return web.json_response(error_body)
 
             reply = await _handle_one(payload)
@@ -578,7 +578,7 @@ class CoreMCPService:
         except Exception as e:
             with contextlib.suppress(Exception):
                 self._log_line(f"/message handler crash (outer): {e!r}", level="error")
-            error_body = _jr_err(jid=None, code=-32603, message="Internal error")
+            error_body = _jr_err(_jid=None, _code=-32603, _message="Internal error")
             return web.json_response(error_body)
 
     @staticmethod
