@@ -67,6 +67,8 @@ uninstall:
 	else \
 	  echo "No virtual environment found at $(VENV_DIR)"; \
 	fi
+	@echo "Removing .vscode (if present).."
+	@rm -rf .vscode 2>/dev/null || true
 
 run:
 	@echo ""
